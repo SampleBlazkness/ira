@@ -1,0 +1,49 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  module:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3 unzip curl
+
+      - name: Android NDK
+        run: |
+          curl -sSLo ndk.zip https://dl.google.com/android/repository/android-ndk-r28c-linux.zip
+          unzip -q ndk.zip
+          echo "IRA_NDK=$PWD/android-ndk-r28c" >> "$GITHUB_ENV"
+
+      - name: Android SDK
+        run: |
+          curl -sSLo cmdline.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline.zip -d sdk-tmp
+          mkdir -p sdk
+          yes | sdk-tmp/cmdline-tools/bin/sdkmanager --sdk_root="$PWD/sdk" \
+            "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          echo "IRA_SDK=$PWD/sdk" >> "$GITHUB_ENV"
+          ls sdk/build-tools/35.0.0/d8
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DIRA_NDK="$IRA_NDK" -DIRA_SDK="$IRA_SDK"
+          cmake --build build --target module -j2
+          ls -l build/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ira-module
+          path: build/dist/*.zip
